@@ -6,7 +6,7 @@ const cors = require('cors');
 const path = require('path');
 const corsOptions = {
     origin: 'https://frontend-experto.netlify.app',
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     credentials: true
 };
 
