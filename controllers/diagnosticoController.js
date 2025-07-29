@@ -1,5 +1,6 @@
 const { spawn } = require('child_process');
 const db = require('../db/conexion');
+const { isNumber } = require('util');
 
 exports.procesarDiagnostico = (req, res) => {
     const sintomasSinPrefijo = req.body.sintomas; // ['1', '2']
@@ -23,7 +24,7 @@ exports.procesarDiagnostico = (req, res) => {
         console.error(`Error Prolog: ${data}`);
     });
 
-    prolog.on('close', (code) => {
+    prolog.on('close', async (code) => {
         // resultado será el texto que write/1 generó
         const diagnostico = resultado.trim().split('\n')[0]; // Primera línea: nombre(s) enfermedad(es)
         console.log("Consulta a Prolog:", consulta); // 👈 agrega esto
@@ -32,23 +33,27 @@ exports.procesarDiagnostico = (req, res) => {
             return res.json({ diagnostico: 'Sin resultado válido. Por favor revise los síntomas seleccionados.' });
         }
 
-        // Insertar en la base de datos
-        db.query('INSERT INTO diagnosticos (id_usuario, resultado) VALUES (?, ?)', [id_usuario, diagnostico], (err, result) => {
-            if (err) throw err;
+        try {
+            const [rows] = await db.query('INSERT INTO diagnosticos (id_usuario, resultado) VALUES (?, ?)', [id_usuario, diagnostico]);
 
-            const id_diagnostico = result.insertId;
+            const id_diagnostico = rows.insertId;
 
-            // Guardar relación de síntomas seleccionados
-            sintomasSinPrefijo.forEach(id_sintoma => {
-                db.query('INSERT INTO diagnostico_sintomas (id_diagnostico, id_sintoma) VALUES (?, ?)', [id_diagnostico, id_sintoma]);
-            });
+            for (const id_sintoma of sintomasSinPrefijo) {
+                await db.query(
+                    'INSERT INTO diagnostico_sintomas (id_diagnostico, id_sintoma) VALUES (?, ?)',
+                    [id_diagnostico, id_sintoma]
+                );
+            }
 
             res.json({ diagnostico });
-        });
+        } catch (err) {
+            console.error('Error al insertar diagnóstico o síntomas:', err);
+            return res.status(500).json({ error: 'Error al guardar diagnóstico' })
+        }
     });
 };
 
-exports.obtenerHistorial = (req, res) => {
+exports.obtenerHistorial = async (req, res) => {
     const id_usuario = 1; // ← De momento fijo
 
     const queryDiagnosticos = `
@@ -61,12 +66,8 @@ exports.obtenerHistorial = (req, res) => {
         ORDER BY d.fecha DESC
     `;
 
-    db.query(queryDiagnosticos, [id_usuario], (err, results) => {
-        if (err) {
-            console.error("Error al consultar historial:", err);
-            return res.status(500).json({ error: 'Error al obtener el historial' });
-        }
-
+    try {
+        const [results] = await db.query(queryDiagnosticos, [id_usuario]);
         // Transformar resultados
         const evaluaciones = results.map(row => ({
             id: row.id,
@@ -74,25 +75,27 @@ exports.obtenerHistorial = (req, res) => {
             date: row.date,
             symptoms: row.sintomas.split(',').map(s => s.trim())
         }));
-
         res.json(evaluaciones);
-    });
+    }
+    catch (err) {
+        console.error("Error al consultar historial:", err);
+        return res.status(500).json({ error: 'Error al obtener el historial' });
+    }
 };
 
-exports.listarPacientes = (req, res) => {
+exports.listarPacientes = async (req, res) => {
     const query = `SELECT id, nombre, correo FROM usuarios WHERE tipo = 'paciente'`;
 
-    db.query(query, (err, results) => {
-        if (err) {
-            console.error('Error al obtener pacientes:', err);
-            return res.status(500).json({ error: 'Error al obtener pacientes' });
-        }
-
+    try {
+        const [results] = await db.query(query);
         res.json(results);
-    });
+    } catch (err) {
+        console.error('Error al obtener pacientes:', err);
+        return res.status(500).json({ error: 'Error al obtener pacientes' });
+    }
 };
 
-exports.agregarPaciente = (req, res) => {
+exports.agregarPaciente = async (req, res) => {
     const { nombre, correo } = req.body;
 
     if (!nombre || !correo) {
@@ -107,33 +110,33 @@ exports.agregarPaciente = (req, res) => {
 
     const query = 'INSERT INTO usuarios (nombre, correo, tipo) VALUES (?, ?, ?)';
 
-    db.query(query, [nuevoPaciente.nombre, nuevoPaciente.correo, nuevoPaciente.tipo], (err, result) => {
-        if (err) {
-            console.error('Error al insertar paciente:', err);
-            return res.status(500).json({ error: 'Error al registrar el paciente' });
-        }
-
+    try {
+        const [result] = await db.query(query, [nuevoPaciente.nombre, nuevoPaciente.correo, nuevoPaciente.tipo]);
         res.status(201).json({ message: 'Paciente registrado correctamente', id: result.insertId });
-    });
+
+    } catch (err) {
+        console.error('Error al insertar paciente:', err);
+        return res.status(500).json({ error: 'Error al registrar el paciente' });
+    }
 };
 
 
-exports.obtenerSintomas = (req, res) => {
+exports.obtenerSintomas = async (req, res) => {
     const sql = 'SELECT * FROM sintomas';
 
-    db.query(sql, (err, results) => {
-        if (err) {
-            console.error('Error al obtener síntomas:', err);
-            return res.status(500).json({ error: 'Error interno del servidor' });
-        }
-
+    try {
+        const [results] = await db.query(sql);
         res.json(results);
-    });
+    } catch (err) {
+
+        console.error('Error al obtener síntomas:', err);
+        return res.status(500).json({ error: 'Error interno del servidor' });
+    }
 };
 
 
 // Crear nuevo síntoma
-exports.crearSintoma = (req, res) => {
+exports.crearSintoma = async (req, res) => {
     const { nombre } = req.body;
 
     if (!nombre || nombre.trim().length < 2) {
@@ -141,32 +144,34 @@ exports.crearSintoma = (req, res) => {
     }
 
     const sql = 'INSERT INTO sintomas (nombre) VALUES (?)';
-    db.query(sql, [nombre.trim()], (err, result) => {
-        if (err) {
-            console.error('Error al insertar síntoma:', err);
-            return res.status(500).json({ error: 'No se pudo guardar el síntoma' });
-        }
 
-        res.status(201).json({ message: 'Síntoma creado correctamente', id: result.insertId });
-    });
+    try {
+        const [rows] = await db.query(sql, [nombre.trim()]);
+        res.status(201).json({ message: 'Síntoma creado correctamente', id: rows.insertId });
+
+    } catch (err) {
+        console.error('Error al insertar síntoma:', err);
+        return res.status(500).json({ error: 'No se pudo guardar el síntoma' });
+    }
 };
 
 // ⚠️ Esta operación borra el síntoma de forma permanente.
 // Asegúrate de no eliminar síntomas usados por el sistema experto (Prolog).
-exports.eliminarSintoma = (req, res) => {
+exports.eliminarSintoma = async (req, res) => {
     const { id } = req.params;
 
     const sql = 'DELETE FROM sintomas WHERE id = ?';
-    db.query(sql, [id], (err, result) => {
-        if (err) {
-            console.error('Error al eliminar síntoma:', err);
-            return res.status(500).json({ error: 'No se pudo eliminar el síntoma' });
-        }
 
-        if (result.affectedRows === 0) {
+    try {
+        const [rows] = await db.query(sql, [id]);
+
+        if (rows.affectedRows === 0) {
             return res.status(404).json({ error: 'Síntoma no encontrado' });
         }
 
         res.json({ message: 'Síntoma eliminado correctamente' });
-    });
+    } catch (err) {
+        console.error('Error al eliminar síntoma:', err);
+        return res.status(500).json({ error: 'No se pudo eliminar el síntoma' });
+    }
 };
