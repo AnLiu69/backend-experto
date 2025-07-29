@@ -1,21 +1,22 @@
-# Imagen base con Node.js y SWI-Prolog
+# Base con SWI-Prolog
 FROM swipl:latest
 
-# Crear directorio de trabajo
+# Instala curl y Node.js sin borrar swipl
+RUN apt-get update && apt-get install -y curl gnupg && \
+    curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
+    apt-get install -y nodejs
+
+# Establece carpeta de trabajo
 WORKDIR /app
 
-# Copiar archivos del backend
+# Copia todos los archivos del backend
 COPY . .
 
-# Instalar Node.js y npm
-RUN apt-get update && \
-    apt-get install -y curl gnupg && \
-    curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
-    apt-get install -y nodejs && \
-    npm install
+# Instala dependencias
+RUN npm install
 
-# Exponer el puerto
-EXPOSE $PORT
+# Expone puerto
+EXPOSE 3000
 
-# Comando para iniciar el servidor
+# Inicia servidor
 CMD ["node", "app.js"]
