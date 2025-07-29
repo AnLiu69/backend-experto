@@ -4,8 +4,14 @@ const app = express();
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const path = require('path');
+const corsOptions = {
+    origin: 'https://frontend-experto.netlify.app',
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    credentials: true
+};
 
-app.use(cors());
+
+app.use(cors(corsOptions));
 app.use(bodyParser.json());
 
 const diagnosticoRoutes = require('./routers/diagnostico');
