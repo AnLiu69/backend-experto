@@ -1,6 +1,7 @@
 const { spawn } = require('child_process');
 const db = require('../db/conexion');
 const { isNumber } = require('util');
+const path = require('path')
 
 exports.procesarDiagnostico = (req, res) => {
     const sintomasSinPrefijo = req.body.sintomas; // ['1', '2']
