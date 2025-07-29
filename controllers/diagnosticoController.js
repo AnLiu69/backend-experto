@@ -10,7 +10,9 @@ exports.procesarDiagnostico = (req, res) => {
     // Crear cadena en Prolog
     const consulta = `test([${sintomas.join(',')}]).\n`;
 
-    const prolog = spawn('swipl', ['-s', 'experto.pl']);
+    console.log('Ruta completa a experto.pl:', path.join(__dirname, '..', 'experto.pl'));
+
+    const prolog = spawn('swipl', ['-s', path.join(__dirname, '..', 'experto.pl')]);
     let resultado = '';
 
     prolog.stdin.write(consulta);
